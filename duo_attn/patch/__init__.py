@@ -60,6 +60,7 @@ def enable_duo_attention_eval(
     full_attention_heads,
     sink_size,
     recent_size,
+    mode=None,
 ):
     print(
         f"Enabling DuoAttention evaluation using sink size {sink_size} and recent size {recent_size}"
@@ -70,6 +71,7 @@ def enable_duo_attention_eval(
             full_attention_heads,
             sink_size,
             recent_size,
+            mode,
         )
     elif "mistral" in model.config.model_type or "mixtral" in model.config.model_type:
         enable_mistral_duo_attention_eval(

@@ -179,3 +179,12 @@ cython_debug/
 
 *.code-workspace
 my_snapshot*
+
+combined_res_sparsity0.5/
+duo_attn.egg-info/
+res/
+speed_res/
+speed_res_bound/
+speed_res_refined_bound/
+speed_res_refined_sparsity0.5
+

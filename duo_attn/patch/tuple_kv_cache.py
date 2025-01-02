@@ -1,5 +1,6 @@
 from typing import Optional, Tuple
 
+from pkg_resources import non_empty_lines
 import torch
 import torch.functional as F
 
@@ -354,18 +355,31 @@ def old_llama_model_forward(
     else:
         raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-    seq_length_with_past = seq_length
-    past_key_values_length = 0
+    if past_key_values is None:
+        self.seq_length_with_past = seq_length
+    else:
+        self.seq_length_with_past += seq_length 
 
-    if past_key_values is not None:
-        past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
+    # if past_key_values is not None:
+    #     past_key_values_length = None
+    #     for kv in past_key_values:
+    #         if kv[0] is not None:
+    #             past_key_values_length = kv[0].shape[2]
+    #             break
+    #     if past_key_values_length is None:
+    #         for kv in past_key_values:
+    #             if kv[1] is not None:
+    #                 past_key_values_length = kv[1].shape[2]
+    #                 break
+    #     # past_key_values_length = past_key_values[0][0].shape[2]
+    #     seq_length_with_past = seq_length_with_past + past_key_values_length
+    seq_length_with_past = self.seq_length_with_past
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
         position_ids = torch.arange(
-            past_key_values_length,
-            seq_length + past_key_values_length,
+            seq_length_with_past - seq_length,
+            seq_length_with_past,
             dtype=torch.long,
             device=device,
         )
@@ -391,7 +405,7 @@ def old_llama_model_forward(
             padding_mask = None
 
     attention_mask = self._prepare_decoder_attention_mask(
-        attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+        attention_mask, (batch_size, seq_length), inputs_embeds, seq_length_with_past - seq_length,
     )
 
     hidden_states = inputs_embeds

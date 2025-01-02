@@ -1,5 +1,6 @@
 from typing import Optional, Tuple
 import os
+from numpy import full
 import torch
 from torch import nn
 
@@ -306,6 +307,181 @@ def llama_duo_attention_forward_one_way_reordered(
     return attn_output, attn_weights, past_key_value
 
 
+def llama_layer_wise_attention_forward_one_way_reordered(
+    self,
+    hidden_states: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    output_attentions: bool = False,
+    use_cache: bool = False,
+    **kwargs,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    bsz, q_len, _ = hidden_states.size()
+
+    query_states = self.q_proj(hidden_states)
+    key_states = self.k_proj(hidden_states)
+    value_states = self.v_proj(hidden_states)
+
+    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)
+    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+    value_states = value_states.view(
+        bsz, q_len, self.num_key_value_heads, self.head_dim
+    )
+
+    # new data structure for past_key_value
+    # past_key_value = (full_KV, streaming_KV)
+    # full_KV: (2 x bsz, num_full_key_value_heads, full_kv_seq_len, head_dim)
+    # streaming_KV: (2 x bsz, num_streaming_key_value_heads, cache_size, head_dim)
+
+    kv_seq_len = key_states.shape[1]
+    if past_key_value is not None:
+        if past_key_value[0] is not None:
+            kv_seq_len += past_key_value[0].shape[2]
+        else:
+            kv_seq_len += past_key_value[1].shape[2]
+
+    cos, sin = self.rotary_emb(value_states, position_ids)
+    query_states, key_states = apply_rotary_pos_emb(
+        query_states,
+        key_states,
+        cos,
+        sin,
+        unsqueeze_dim=2,  # unsqueeze_dim=2 for the flash attention
+    )
+
+    if not hasattr(self, "full_attn_head_mask") or self.full_attn_head_mask is None:
+        self.full_attn_head_mask = self.full_attention_heads > 0.5
+        self.num_full_attn_head = self.full_attn_head_mask.sum().item()
+        self.num_streaming_attn_head = (
+            self.num_key_value_heads - self.num_full_attn_head
+        )
+
+        self.num_full_query_head = self.num_full_attn_head * self.num_key_value_groups
+        self.num_streaming_query_head = self.num_heads - self.num_full_query_head
+
+    # Different situation: all full attentio or all streaming attention
+    if self.num_full_attn_head > 0:
+        full_key_states = key_states
+        full_value_states = value_states
+
+        if past_key_value is not None:
+            past_full_KV = past_key_value[0].transpose(1, 2)
+
+            past_full_key_states = past_full_KV[:bsz]
+            past_full_value_states = past_full_KV[bsz:]
+
+            full_key_states = torch.cat([past_full_key_states, full_key_states], dim=1)
+            full_value_states = torch.cat(
+                [past_full_value_states, full_value_states], dim=1
+            )
+        
+        if q_len == kv_seq_len:
+            # pre-filling: use flash attention
+            attn_output = flash_attn_func(
+                query_states,
+                key_states,
+                value_states,
+                causal=True,
+                dropout_p=0.0,
+            )
+        else:
+            # decoding or continous filling
+            attn_output = flash_attn_func(
+                query_states,
+                full_key_states,
+                full_value_states,
+                causal=True,
+                dropout_p=0.0,
+            )
+
+        past_key_value = (
+            (
+                torch.cat([full_key_states, full_value_states], dim=0).transpose(
+                    1, 2
+                ),
+                None
+            )
+            if use_cache
+            else None
+        )
+            
+    else:
+        streaming_key_states = key_states
+        streaming_value_states = value_states
+
+        if past_key_value is not None:
+            past_streaming_KV = past_key_value[1].transpose(1, 2)
+
+            past_streaming_key_states = past_streaming_KV[:bsz]
+            past_streaming_value_states = past_streaming_KV[bsz:]
+
+            streaming_key_states = torch.cat(
+                [past_streaming_key_states, streaming_key_states], dim=1
+            )
+            streaming_value_states = torch.cat(
+                [past_streaming_value_states, streaming_value_states], dim=1
+            )
+
+        if q_len == kv_seq_len:
+            # pre-filling: use flash attention
+            attn_output = flash_attn_func(
+                query_states,
+                key_states,
+                value_states,
+                causal=True,
+                dropout_p=0.0,
+            )
+        else:
+            # decoding or continous filling
+            attn_output = flash_attn_func(
+                query_states,
+                streaming_key_states,
+                streaming_value_states,
+                causal=True,
+                dropout_p=0.0,
+            )
+
+        if streaming_key_states.shape[1] > self.recent_size + self.sink_size:
+            recent_key_states = streaming_key_states[:, -self.recent_size :, :, :].clone()
+            streaming_key_states[
+                :, self.sink_size : self.sink_size + self.recent_size, :, :
+            ].copy_(recent_key_states)
+            streaming_key_states = streaming_key_states[
+                :, : self.sink_size + self.recent_size, :, :
+            ]
+
+            recent_value_states = streaming_value_states[
+                :, -self.recent_size :, :, :
+            ].clone()
+            streaming_value_states[
+                :, self.sink_size : self.sink_size + self.recent_size, :, :
+            ].copy_(recent_value_states)
+            streaming_value_states = streaming_value_states[
+                :, : self.sink_size + self.recent_size, :, :
+            ]
+
+        past_key_value = (
+            (
+                None,
+                torch.cat([streaming_key_states, streaming_value_states], dim=0).transpose(
+                    1, 2
+                ),
+            )
+            if use_cache
+            else None
+        )
+
+    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
+    attn_output = self.o_proj(attn_output)
+
+    if not output_attentions:
+        attn_weights = None
+
+    return attn_output, attn_weights, past_key_value
+
+
 def llama_duo_attention_forward_one_way_reordered_static(
     self,
     hidden_states: torch.Tensor,
@@ -506,6 +682,7 @@ def enable_llama_duo_attention_eval(
     full_attention_heads,
     sink_size,
     recent_size,
+    mode=None,
 ):
     enable_tuple_kv_cache_for_llama(model)
 
@@ -517,9 +694,14 @@ def enable_llama_duo_attention_eval(
             full_attention_heads[idx], device=device, dtype=dtype
         )
 
-        module.forward = types.MethodType(
-            llama_duo_attention_forward_one_way_reordered, module
-        )
+        if mode == 'layer-wise':
+            module.forward = types.MethodType(
+                llama_layer_wise_attention_forward_one_way_reordered, module
+            )
+        else:
+            module.forward = types.MethodType(
+                llama_duo_attention_forward_one_way_reordered, module
+            )
         module.q_proj = reorder_linear_weights(
             module.q_proj,
             layer_full_attention_heads,
