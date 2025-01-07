@@ -19,12 +19,12 @@ def main(args):
     selected_layers = math.ceil(args.total_layers * args.sparsity)
 
     min_loss = 100
-    for combo in tqdm(combinations(args.total_layers, selected_layers), desc="Calculate progress."):
+    for combo in tqdm(combinations(range(args.total_layers), selected_layers), desc="Calculate progress."):
         # Calculate the difference of selected combination with baseline.
         curr_attn_heads = np.full_like(baseline_attn_heads_classification, 0)
         curr_attn_heads[combo, :] = 1
 
-        mask = (curr_attn_heads == 1)
+        mask = (baseline_attn_heads_classification == 1)
         diff = (curr_attn_heads != baseline_attn_heads_classification)
         diff = mask & diff 
 
