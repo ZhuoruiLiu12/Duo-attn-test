@@ -23,12 +23,23 @@ def main(args):
         # Calculate the difference of selected combination with baseline.
         curr_attn_heads = np.full_like(baseline_attn_heads_classification, 0)
         curr_attn_heads[combo, :] = 1
+        
+        if args.loss_type == "loss_only":
+            mask = (baseline_attn_heads_classification == 1)
+            diff = (curr_attn_heads != baseline_attn_heads_classification)
+            diff = mask & diff 
+            res = baseline_attn_heads[diff].sum()
+        else:
+            # calculate the gain simultaneously
+            loss_mask = (baseline_attn_heads_classification == 1)
+            gain_mask = (baseline_attn_heads_classification == 0)
+            diff = (curr_attn_heads != baseline_attn_heads_classification)
 
-        mask = (baseline_attn_heads_classification == 1)
-        diff = (curr_attn_heads != baseline_attn_heads_classification)
-        diff = mask & diff 
+            loss_index = loss_mask & diff
+            gain_index = gain_mask & diff
+            res = baseline_attn_heads[loss_index].sum() - baseline_attn_heads[gain_index].sum()
 
-        res = baseline_attn_heads[diff].sum()
+
         if min_loss > res:
             min_loss = res
             final_combo = combo
@@ -41,7 +52,7 @@ def main(args):
     }
 
     os.makedirs(args.save_path, exist_ok=True)
-    file_name = f"{model_name}_{sparsity}_{args.total_layers}_{selected_layers}.json"
+    file_name = f"{model_name}_{args.loss_type}_{sparsity}_{args.total_layers}_{selected_layers}.json"
     file_path = os.path.join(args.save_path, file_name)
     with open(file_path, 'w') as f:
         json.dump(final_res, f, indent=4)
@@ -53,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("--sparsity", type=float)
     parser.add_argument("--total_layers", type=int)
     parser.add_argument("--save_path", type=str)
+    parser.add_argument("--loss_type", type=str, default="loss_only")
 
     args = parser.parse_args()
     main(args)
