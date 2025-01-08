@@ -13,7 +13,7 @@ def main(args):
     baseline_attn_heads, sink_size, recent_size = load_attn_pattern(
         args.model_attn_path
     )
-    model_name = args.model_attn_path.split('/')[-1]
+    model_name = args.model_attn_path.split('/')[-3]
 
     baseline_attn_heads_classification, sparsity = sparsify_attention_heads(baseline_attn_heads, sparsity=args.sparsity)
     selected_layers = math.ceil(args.total_layers * args.sparsity)
@@ -35,13 +35,13 @@ def main(args):
             final_attn_heads = curr_attn_heads
     
     final_res = {
-        "Min Loss": min_loss,
-        "Combination": final_combo,
-        "Attention Heads": final_attn_heads
+        "Min Loss": float(min_loss),
+        "Combination": list(final_combo),
+        "Attention Heads": final_attn_heads.tolist()
     }
 
     os.makedirs(args.save_path, exist_ok=True)
-    file_name = f"{model_name}_{sparsity}_{args.total_layers}_{selected_layers}"
+    file_name = f"{model_name}_{sparsity}_{args.total_layers}_{selected_layers}.json"
     file_path = os.path.join(args.save_path, file_name)
     with open(file_path, 'w') as f:
         json.dump(final_res, f, indent=4)
