@@ -203,18 +203,27 @@ def load_model_and_tokenizer(path, model_name):
         print(
             f"Loading attention pattern from {args.attn_load_dir} with sparsity {args.sparsity}"
         )
-        full_attention_heads, sink_size, recent_size = load_attn_pattern(
-            args.attn_load_dir
-        )
+        try:
+            full_attention_heads, sink_size, recent_size = load_attn_pattern(
+                args.attn_load_dir
+            )
 
-        if args.sink_size is not None:
-            sink_size = args.sink_size
-        if args.recent_size is not None:
-            recent_size = args.recent_size
+            if args.sink_size is not None:
+                sink_size = args.sink_size
+            if args.recent_size is not None:
+                recent_size = args.recent_size
 
-        full_attention_heads, sparsity = sparsify_attention_heads(
-            full_attention_heads, None, sparsity=args.sparsity
-        )
+            full_attention_heads, sparsity = sparsify_attention_heads(
+                full_attention_heads, None, sparsity=args.sparsity
+            )
+        except:
+            # modify later
+            data = json.load(open(args.attn_load_dir, "r"))
+            full_attention_heads = np.array(data['Attention Heads'])
+            sparsity = args.sparsity
+            sink_size = 128
+            recent_size = 256
+
         print(f"True sparsity: {sparsity}")
 
         enable_duo_attention_eval(
