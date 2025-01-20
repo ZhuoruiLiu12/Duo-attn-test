@@ -192,16 +192,25 @@ class LLMNeedleHaystackTester:
             print(
                 f"Loading attention pattern from {attn_load_dir} with sparsity {sparsity}"
             )
-            full_attention_heads, sink_size, recent_size = load_attn_pattern(
-                attn_load_dir
-            )
-            if args.sink_size is not None:
-                sink_size = args.sink_size
-            if args.recent_size is not None:
-                recent_size = args.recent_size
-            full_attention_heads, sparsity = sparsify_attention_heads(
-                full_attention_heads, None, sparsity
-            )
+            try:
+                full_attention_heads, sink_size, recent_size = load_attn_pattern(
+                    attn_load_dir
+                )
+                if args.sink_size is not None:
+                    sink_size = args.sink_size
+                if args.recent_size is not None:
+                    recent_size = args.recent_size
+                full_attention_heads, sparsity = sparsify_attention_heads(
+                    full_attention_heads, None, sparsity
+                )
+            except:
+                # modify later
+                data = json.load(open(args.attn_load_dir, "r"))
+                full_attention_heads = np.array(data['Attention Heads'])
+                sparsity = args.sparsity
+                sink_size = 128
+                recent_size = 256
+
             enable_duo_attention_eval(
                 self.model_to_test,
                 full_attention_heads,
@@ -375,7 +384,7 @@ class LLMNeedleHaystackTester:
             p = f"results/{self.model_version}/{context_file_location}_results.json"
             print("Writing at %s" % p)
             with open(p, "w", encoding="utf-8") as f:
-                json.dump(results, f)
+                json.dump(results, f, indent=4)
 
     def result_exists(self, context_length, depth_percent):
         """

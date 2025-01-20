@@ -11,7 +11,7 @@ from functools import partial
 from duo_attn.utils import load_attn_pattern, sparsify_attention_heads
 
 
-def loss_only(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads):
+def loss_only(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, *args):
     full_heads_mask = (baseline_attn_heads_classification == 1)
     diff_mask = (curr_attn_heads != baseline_attn_heads_classification)
     target_indices = full_heads_mask & diff_mask
@@ -19,7 +19,7 @@ def loss_only(baseline_attn_heads_classification, curr_attn_heads, baseline_attn
     return baseline_attn_heads[target_indices].sum()
 
 
-def loss_with_gain(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads):
+def loss_with_gain(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, *args):
     full_heads_mask = (baseline_attn_heads_classification == 1)
     streaming_heads_mask = (baseline_attn_heads_classification == 0)
     diff_mask = (curr_attn_heads != baseline_attn_heads_classification)
@@ -30,7 +30,7 @@ def loss_with_gain(baseline_attn_heads_classification, curr_attn_heads, baseline
     return baseline_attn_heads[loss_indices].sum() - baseline_attn_heads[gain_indices].sum()
 
 
-def loss_minimize_number_of_changed_heads(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads):
+def loss_minimize_number_of_changed_heads(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, *args):
     # The same as all attention heads have the same score.
     baseline_attn_heads = np.full_like(baseline_attn_heads, 1)
     diff_mask = (curr_attn_heads != baseline_attn_heads_classification)
@@ -38,17 +38,29 @@ def loss_minimize_number_of_changed_heads(baseline_attn_heads_classification, cu
     return baseline_attn_heads[diff_mask].sum()
 
 
+def loss_with_wighted_gain(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, *args):
+    # gain is not as important as loss, we multiply a weighted to reduce the importance of gain in final loss.
+    full_heads_mask = (baseline_attn_heads_classification == 1)
+    streaming_heads_mask = (baseline_attn_heads_classification == 0)
+    diff_mask = (curr_attn_heads != baseline_attn_heads_classification)
+
+    loss_indices = full_heads_mask & diff_mask
+    gain_indices = streaming_heads_mask & diff_mask
+
+    return baseline_attn_heads[loss_indices].sum() - baseline_attn_heads[gain_indices].sum() * args[0].loss_weight
+
 loss_func = {
     "loss_only": loss_only,
     "loss_with_gain": loss_with_gain,
     "loss_minimize_number_of_changed_heads": loss_minimize_number_of_changed_heads,
+    "loss_with_weighted_gain": loss_with_wighted_gain,
 }
 
 def calculate_loss(combo, baseline_attn_heads, baseline_attn_heads_classification, args):
     curr_attn_heads = np.full_like(baseline_attn_heads_classification, 0)
     curr_attn_heads[combo, :] = 1
 
-    res = loss_func[args.loss_type](baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads)
+    res = loss_func[args.loss_type](baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, args)
 
     return res, combo, curr_attn_heads
 
@@ -128,5 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_path", type=str)
     parser.add_argument("--loss_type", type=str, default="loss_only")
 
+    parser.add_argument("--loss_weight", type=float, default=0.5)
+    
     args = parser.parse_args()
     main(args)
