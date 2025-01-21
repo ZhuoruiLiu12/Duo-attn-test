@@ -187,4 +187,10 @@ speed_res/
 speed_res_bound/
 speed_res_refined_bound/
 speed_res_refined_sparsity0.5
-
+combination_res_refined/
+combination_res/
+eval/LongBench/pred*
+eval/needle/contexts
+eval/needle/img
+eval/needle/logs
+eval/needle/results/

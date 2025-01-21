@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+import numpy as np
 import json
 import wandb
 import matplotlib.pyplot as plt
@@ -21,6 +22,7 @@ from duo_attn.data import (
 )
 from duo_attn.patch import (
     enable_duo_attention_training,
+    enable_layer_wise_duo_attention_training,
     get_full_attention_heads,
     set_full_attention_heads,
     map_full_attention_heads,
@@ -270,15 +272,32 @@ def main(args):
         attn_implementation="eager",
     )
 
-    enable_duo_attention_training(
-        model,
-        args.sink_size,
-        args.recent_size,
-        args.max_length,
-        initial_value=args.initial_value,
-        enable_ulysses_attention=True,
-        streaming_attn_implementation=args.streaming_attn_implementation,
-    )
+    if args.training_type == "duo":
+        enable_duo_attention_training(
+            model,
+            args.sink_size,
+            args.recent_size,
+            args.max_length,
+            initial_value=args.initial_value,
+            enable_ulysses_attention=True,
+            streaming_attn_implementation=args.streaming_attn_implementation,
+        )
+    elif args.training_type == "layer-wise":
+        layer_imp = None
+        if args.layer_imp_path is not None:
+            layer_info = json.load(open(args.layer_imp_path, "r"))
+            layer_imp_index = layer_info["Combination"]
+            layer_imp = np.zeros((32))
+            layer_imp[layer_imp_index] = 1
+        enable_layer_wise_duo_attention_training(
+            model,
+            args.sink_size,
+            args.recent_size,
+            args.max_length,
+            initial_value=args.initial_value if layer_imp is None else layer_imp,
+            enable_ulysses_attention=True,
+            streaming_attn_implementation=args.streaming_attn_implementation,
+        )
 
     model = model.model
 
