@@ -7,15 +7,17 @@ ctx_len_max=${3}
 reg_weight=${4}
 lr=${5}
 num_passkey=${6}
+init_loss_type=${7}
+init_imp_path=${8}
 setting="lr=${lr}-reg=${reg_weight}-ctx=${ctx_len_min}_${ctx_len_max}-multi_passkey${num_passkey}"
-exp_name=${model_name}/${setting}
+exp_name=${model_name}/${init_loss_type}/${setting}
 
 torchrun --nnodes 1 --nproc_per_node 8 \
     duo_attn/train.py \
-    --model_name models/${model_name} \
+    --model_name /workspace/Edge_Shared/zhuorui/models/${model_name} \
     --batch_size 1 \
     --max_length ${ctx_len_max} \
-    --dataset_name "datasets/booksum.jsonl.zst" \
+    --dataset_name "/workspace/Edge_Shared/zhuorui/datasets/raw/booksum.jsonl.zst" \
     --sink_size 128 \
     --recent_size 256 \
     --num_steps 2000 \
@@ -31,4 +33,6 @@ torchrun --nnodes 1 --nproc_per_node 8 \
     --gradient_accumulation_steps 1 \
     --num_passkey ${num_passkey} \
     --dataset_format "multiple_passkey" \
-    --output_dir attn_patterns/${exp_name}
+    --output_dir layer_attn_patterns/${exp_name} \
+    --training_type layer-wise \
+    --layer_imp_path ${init_imp_path}

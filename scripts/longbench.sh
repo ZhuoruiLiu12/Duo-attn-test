@@ -7,5 +7,5 @@ python -u eval/LongBench/pred.py \
     --method duo_attn \
     --attn_load_dir ${attn_pattern} \
     --sparsity $sparsity \
-    --sink_size 64 \
+    --sink_size 128 \
     --recent_size 256

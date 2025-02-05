@@ -49,11 +49,25 @@ def loss_with_wighted_gain(baseline_attn_heads_classification, curr_attn_heads, 
 
     return baseline_attn_heads[loss_indices].sum() - baseline_attn_heads[gain_indices].sum() * args[0].loss_weight
 
+
+def loss_with_weighted_minimize_number_of_changed_heads(baseline_attn_heads_classification, curr_attn_heads, baseline_attn_heads, *args):
+    # full->streaming heads add weighted
+    full_heads_mask = (baseline_attn_heads_classification == 1)
+    streaming_heads_mask = (baseline_attn_heads_classification == 0)
+    diff_mask = (curr_attn_heads != baseline_attn_heads_classification)
+
+    loss_indices = full_heads_mask & diff_mask
+    gain_indices = streaming_heads_mask & diff_mask
+
+    return loss_indices.sum() + gain_indices.sum() * args[0].loss_weight
+
+
 loss_func = {
     "loss_only": loss_only,
     "loss_with_gain": loss_with_gain,
     "loss_minimize_number_of_changed_heads": loss_minimize_number_of_changed_heads,
     "loss_with_weighted_gain": loss_with_wighted_gain,
+    "loss_with_weighted_minimize_number_of_changed_heads": loss_with_weighted_minimize_number_of_changed_heads,
 }
 
 def calculate_loss(combo, baseline_attn_heads, baseline_attn_heads_classification, args):
@@ -119,7 +133,7 @@ def main(args):
     }
 
     os.makedirs(args.save_path, exist_ok=True)
-    file_name = f"{model_name}_{args.loss_type}_{sparsity}_{args.total_layers}_{selected_layers}.json"
+    file_name = f"{model_name}_{args.loss_type}_weight{args.loss_weight}_{sparsity}_{args.total_layers}_{selected_layers}.json"
     file_path = os.path.join(args.save_path, file_name)
     with open(file_path, 'w') as f:
         json.dump(final_res, f, indent=4)

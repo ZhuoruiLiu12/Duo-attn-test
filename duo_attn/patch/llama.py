@@ -145,7 +145,7 @@ def llama_duo_attention_forward_two_way(
     return attn_output, attn_weights, past_key_value
 
 
-def llama_duo_attention_forward_two_way(
+def llama_layer_wise_duo_attention_forward_two_way(
     self,
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
@@ -820,7 +820,7 @@ def enable_llama_layer_wise_duo_attention_training(
 
     for idx, layer in enumerate(model.model.layers):
         module = layer.self_attn
-        module.forward = types.MethodType(llama_duo_attention_forward_two_way, module)
+        module.forward = types.MethodType(llama_layer_wise_duo_attention_forward_two_way, module)
         module.sink_size = sink_size
         module.recent_size = recent_size
         if isinstance(initial_value, np.ndarray):

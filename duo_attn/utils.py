@@ -9,6 +9,12 @@ import os
 import json
 
 
+def parser_none(value):
+    if value.lower() == "none":
+        return None
+    return value
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="kv_reduction")
 
@@ -56,6 +62,7 @@ def parse_args():
         "--streaming_attn_implementation", type=str, default="blocksparse"
     )
     parser.add_argument("--training_type", type=str, default="duo", choices=["duo", "layer-wise"])
+    parser.add_argument("--layer_imp_path", type=parser_none, default=None)
 
     parser.add_argument(
         "--supervision",
@@ -354,6 +361,9 @@ def seed_everything(seed):
 def sparsify_attention_heads(full_attention_heads, threshold=None, sparsity=None):
     # add a very small random noise to full_attention_heads to break ties
     full_attention_heads += np.random.uniform(0, 1e-6, full_attention_heads.shape)
+    # if layer-wise, expand the numpy array
+    if full_attention_heads.ndim == 1:
+        full_attention_heads = np.tile(full_attention_heads[:, None], (1, 8))
 
     if sparsity is not None:
         # ignore the threshold and use the sparsity

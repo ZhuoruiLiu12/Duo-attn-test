@@ -274,16 +274,17 @@ if __name__ == "__main__":
     dataset2prompt = json.load(open("eval/LongBench/config/dataset2prompt.json", "r"))
     dataset2maxlen = json.load(open("eval/LongBench/config/dataset2maxlen.json", "r"))
     # predict on each dataset
-    if not os.path.exists("eval/LongBench/pred"):
-        os.makedirs("eval/LongBench/pred")
+    if not os.path.exists("eval/LongBench/pred/weights"):
+        os.makedirs("eval/LongBench/pred/weights")
     if not os.path.exists("eval/LongBench/pred_e"):
         os.makedirs("eval/LongBench/pred_e")
     for dataset in datasets:
-        data = load_dataset("THUDM/LongBench", dataset, split="test")
-        if not os.path.exists(f"eval/LongBench/pred/{model_name}"):
-            os.makedirs(f"eval/LongBench/pred/{model_name}")
+        # data = load_dataset("THUDM/LongBench", dataset, split="test")
+        data = load_dataset("/workspace/Edge_Shared/zhuorui/datasets/raw/LongBench/LongBench.py", dataset, split="test", trust_remote_code=True)
+        if not os.path.exists(f"eval/LongBench/pred/weights/after_training/{model_name}"):
+            os.makedirs(f"eval/LongBench/pred/weights/after_training/{model_name}")
         if args.method == "duo_attn":
-            out_path = f"eval/LongBench/pred/{model_name}/{dataset}-duo_attn-pattern-{args.attn_load_dir.split('/')[-1]}-sp-{args.sparsity}.jsonl"
+            out_path = f"eval/LongBench/pred/weights/after_training/{model_name}/{dataset}-duo_attn-pattern-{args.attn_load_dir.split('/')[-1]}-sp-{args.sparsity}.jsonl"
         else:
             out_path = f"eval/LongBench/pred/{model_name}/{dataset}-full.jsonl"
         prompt_format = dataset2prompt[dataset]
